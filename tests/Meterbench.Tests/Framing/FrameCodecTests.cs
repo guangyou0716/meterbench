@@ -138,6 +138,60 @@ public class FrameCodecTests
         yield return new object[] { new byte[] { FrameCodec.Flag, 50, 0x01, 0x02 } };
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(5)]
+    [InlineData(12)]
+    public void LengthMismatch_WhenCrcValidPayloadIsShorterThanTheLayout(int payloadLength)
+    {
+        var frame = new byte[1 + 1 + payloadLength + 2 + 1];
+        frame[0] = FrameCodec.Flag;
+        frame[1] = (byte)payloadLength;
+        if (payloadLength > 0)
+        {
+            frame[2] = 1;
+        }
+
+        var crc = Crc16X25.Compute(frame.AsSpan(1, 1 + payloadLength));
+        BinaryPrimitives.WriteUInt16LittleEndian(frame.AsSpan(2 + payloadLength), crc);
+        frame[^1] = FrameCodec.Flag;
+        Expect(frame, FrameErrorKind.LengthMismatch);
+    }
+
+    [Theory]
+    [InlineData(127, 1)]
+    [InlineData(29, 1)]
+    [InlineData(28, 8)]
+    [InlineData(-29, 1)]
+    [InlineData(-128, -1)]
+    public void EngineeringValue_OutsideDecimalRange_IsReportedWithoutThrowingFromTryGet(int scale, int scaledValue)
+    {
+        var bytes = FrameCodec.Encode("MTR-A1", VoltageObis, (sbyte)scale, scaledValue);
+        var parsed = Assert.IsType<FrameParseResult.Success>(FrameCodec.Parse(bytes));
+
+        Assert.False(parsed.Frame.TryGetEngineeringValue(out var value));
+        Assert.Equal(0m, value);
+        Assert.Throws<OverflowException>(() => parsed.Frame.EngineeringValue);
+    }
+
+    [Theory]
+    [InlineData(28, 7, "70000000000000000000000000000")]
+    [InlineData(19, int.MaxValue, "21474836470000000000000000000")]
+    [InlineData(-28, 1, "0.0000000000000000000000000001")]
+    [InlineData(-28, int.MinValue, "-0.0000000000000000002147483648")]
+    [InlineData(127, 0, "0")]
+    [InlineData(-128, 0, "0")]
+    public void EngineeringValue_AtTheDecimalEdges_IsExact(int scale, int scaledValue, string expected)
+    {
+        var frame = new DlmsLikeFrame("MTR-A1", VoltageObis, (sbyte)scale, scaledValue);
+
+        Assert.True(frame.TryGetEngineeringValue(out var value));
+        var want = decimal.Parse(expected, System.Globalization.CultureInfo.InvariantCulture);
+        Assert.Equal(want, value);
+        Assert.Equal(want, frame.EngineeringValue);
+    }
+
     private static byte[] Sample()
     {
         return FrameCodec.Encode("MTR-A1", VoltageObis, -1, 2301);

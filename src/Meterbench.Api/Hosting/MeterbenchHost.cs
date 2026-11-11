@@ -12,6 +12,7 @@ public static class MeterbenchHost
     {
         var connectionString = configuration.GetConnectionString("Meterbench") ?? "Data Source=meterbench.db";
         services.AddDbContext<MeterbenchDbContext>(options => options.UseSqlite(connectionString));
+        services.AddSingleton<SimulatorWriteGate>();
         services.AddScoped<FleetService>();
         services.ConfigureHttpJsonOptions(options =>
         {
