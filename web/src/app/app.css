@@ -1,0 +1,143 @@
+:host {
+  display: block;
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 1rem;
+}
+.top {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+}
+h1 {
+  margin: 0;
+  font-size: 1.6rem;
+}
+.note,
+.muted {
+  color: #555;
+}
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+button {
+  font: inherit;
+  padding: 0.35rem 0.7rem;
+  border: 1px solid #888;
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+}
+button[aria-pressed='true'] {
+  background: #0b5394;
+  color: #fff;
+  border-color: #0b5394;
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+button:focus-visible {
+  outline: 3px solid #f1c232;
+  outline-offset: 2px;
+}
+.problem {
+  margin: 1rem 0;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid #c00;
+  background: #fdecea;
+  border-radius: 4px;
+}
+.problem.offline {
+  border-color: #a60;
+  background: #fff4e5;
+}
+.alarms {
+  margin: 1rem 0;
+}
+.alarm {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.5rem 0.8rem;
+  margin-bottom: 0.4rem;
+  background: #fdecea;
+  border-left: 4px solid #c00;
+}
+.alarm.acked {
+  background: #f3f3f3;
+  border-left-color: #888;
+}
+.badge {
+  font-size: 0.85rem;
+  color: #333;
+}
+.layout {
+  display: grid;
+  grid-template-columns: minmax(200px, 1fr) 3fr;
+  gap: 1.5rem;
+}
+@media (max-width: 700px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+}
+nav ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+.device {
+  width: 100%;
+  text-align: left;
+  display: grid;
+}
+.device-id {
+  font-weight: 600;
+}
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0.5rem 0 1rem;
+}
+caption {
+  text-align: left;
+  font-weight: 600;
+  padding-bottom: 0.3rem;
+}
+th,
+td {
+  text-align: left;
+  padding: 0.3rem 0.5rem;
+  border-bottom: 1px solid #ddd;
+}
+.num {
+  font-variant-numeric: tabular-nums;
+}
+tr.selected {
+  background: #eef4fb;
+}
+.link {
+  border: none;
+  background: none;
+  padding: 0;
+  color: #0b5394;
+  text-decoration: underline;
+}
+.spark {
+  width: 100%;
+  max-width: 480px;
+  height: 60px;
+  color: #0b5394;
+  display: block;
+}
+.history {
+  max-width: 360px;
+}
