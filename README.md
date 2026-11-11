@@ -36,10 +36,11 @@ Meterbench.Api
         |
         v
 web/ Angular dashboard (ng serve proxies /api)
-(later) Modbus TCP and MQTT — interfaces only in v0.1, no listener and no broker
+Meterbench.Core.Modbus: read-only Modbus TCP simulator (function 0x03, loopback only, library)
+(later) MQTT — interface only, no broker
 ```
 
-`Meterbench.Core` holds the fleet catalog, simulator, frame codec, and alarm engine. `Meterbench.Api` is the HTTP and SQLite edge. `Meterbench.Tests` covers the codec, the alarm rules, and the API through `WebApplicationFactory`.
+`Meterbench.Core` holds the fleet catalog, simulator, frame codec, alarm engine, and the Modbus TCP simulator. `Meterbench.Api` is the HTTP and SQLite edge. `Meterbench.Tests` covers the codec, the alarm rules, and the API through `WebApplicationFactory`.
 
 ## Run
 
@@ -105,13 +106,27 @@ Parser tests cover a valid frame, round-trip encode/parse, and each typed error:
 
 CI is [`.github/workflows/ci.yml`](.github/workflows/ci.yml): `ubuntu-latest`, .NET `8.0.x`, restore, `dotnet build -c Release --no-restore`, `dotnet test -c Release --no-build`.
 
+## Modbus TCP simulator (library)
+
+`ModbusTcpSimulator` serves the fleet as holding registers over Modbus TCP. It refuses any non-loopback address. Unit ids: `1` = `MTR-A1`, `2` = `MTR-A2`, `3` = `LC-B1`. Each quantity is two registers at its invented holding address (see [`docs/register-map.md`](docs/register-map.md)): the scaled int32, high word first.
+
+```csharp
+var tick = 0;
+var registers = new FleetHoldingRegisters(FleetCatalog.DefaultSeed, () => tick);
+await using var server = new ModbusTcpSimulator(registers, new IPEndPoint(IPAddress.Loopback, 5020));
+server.Start();
+// Read unit 1, address 0, count 2 -> voltageL1 at the current tick.
+```
+
+Errors use standard exception codes: `0x01` unsupported function, `0x02` unmapped address, `0x03` count outside `1..125`, `0x0B` unknown unit. A header with a non-zero protocol id or an illegal length closes the connection. The API host does not start the simulator yet.
+
 ## What this is not
 
 - Not a connection to a real meter, PLC, factory network, or customer site.
 - Not certified DLMS/COSEM, IEC 62056, or legal metrology. The frame codec is an unofficial tutorial layout (start flag, length, payload, CRC-16/X-25, end flag).
 - Not affiliated with LHDN, PayNet, meter vendors, or former employers.
 - Not energy billing, settlement, or safety-critical control. Nothing writes coils or commands a machine.
-- Not Modbus or MQTT yet. Those seams are interfaces only; v0.1 does not listen or publish.
+- Not a full Modbus server. The simulator answers only function 0x03 (Read Holding Registers), binds loopback only, is not started by the API host, and never writes. MQTT is still an interface only.
 - Not a SQL Server operations claim. SQLite is the local demo database.
 - Not a place for employer data, register maps from a workplace, or secrets.
 

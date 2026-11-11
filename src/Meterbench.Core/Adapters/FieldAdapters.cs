@@ -1,8 +1,9 @@
 namespace Meterbench.Core.Adapters;
 
 /// <summary>
-/// Later increment. Increment 1 has no Modbus transport and does not open a socket.
-/// Holding addresses in the fleet catalog are invented placeholders only.
+/// Implemented by <see cref="Meterbench.Core.Modbus.FleetHoldingRegisters"/> and served over
+/// loopback-only Modbus TCP by <see cref="Meterbench.Core.Modbus.ModbusTcpSimulator"/>.
+/// Holding addresses in the fleet catalog are invented, not a vendor register map.
 /// </summary>
 public interface IModbusHoldingRegisterSource
 {
