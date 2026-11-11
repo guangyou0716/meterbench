@@ -13,6 +13,13 @@ public static class MeterbenchHost
         var connectionString = configuration.GetConnectionString("Meterbench") ?? "Data Source=meterbench.db";
         services.AddDbContext<MeterbenchDbContext>(options => options.UseSqlite(connectionString));
         services.AddSingleton<SimulatorWriteGate>();
+        services.AddSingleton<SimulatorClock>();
+        services.AddOptions<ModbusSimulatorOptions>()
+            .Bind(configuration.GetSection(ModbusSimulatorOptions.SectionName))
+            .Validate(o => o.Port is >= 0 and <= 65535, "Meterbench:Modbus:Port must be 0..65535.")
+            .ValidateOnStart();
+        services.AddSingleton<ModbusSimulatorHostedService>();
+        services.AddHostedService(sp => sp.GetRequiredService<ModbusSimulatorHostedService>());
         services.AddScoped<FleetService>();
         services.ConfigureHttpJsonOptions(options =>
         {
@@ -28,5 +35,6 @@ public static class MeterbenchHost
         await db.Database.EnsureCreatedAsync();
         var fleet = scope.ServiceProvider.GetRequiredService<FleetService>();
         await fleet.EnsureSeededAsync();
+        await fleet.SyncClockAsync();
     }
 }
