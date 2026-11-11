@@ -101,6 +101,33 @@ jobs:
           grep -q '^meterbench/LC-B1/latest {"deviceId":"LC-B1","tick":5' received.txt
           grep -q '"quantity":"cabinetTemperature","unit":"[^"]*","value":41' received.txt
 
+      - name: API host publishes on connect and after a tick
+        run: |
+          docker exec mosquitto sh -c "mosquitto_sub -h localhost -t 'meterbench/+/latest' -v -C 6 -W 90 > /tmp/api.txt" &
+          sleep 2
+          mkdir -p "$RUNNER_TEMP/apidata"
+          Meterbench__Mqtt__Enabled=true Meterbench__Mqtt__Port=1883 \
+            ConnectionStrings__Meterbench="Data Source=$RUNNER_TEMP/apidata/meterbench.db" \
+            dotnet run --project src/Meterbench.Api -c Release --no-build --no-launch-profile --urls http://127.0.0.1:5080 > api.log 2>&1 &
+          for i in $(seq 1 60); do
+            curl -fsS http://127.0.0.1:5080/api/devices >/dev/null 2>&1 && break
+            sleep 1
+          done
+          curl -fsS -X POST 'http://127.0.0.1:5080/api/simulator/tick?count=5' >/dev/null
+          for i in $(seq 1 30); do
+            [ "$(docker exec mosquitto sh -c 'wc -l < /tmp/api.txt')" -ge 6 ] && break
+            sleep 1
+          done
+          docker exec mosquitto cat /tmp/api.txt | tee api-received.txt
+          [ "$(grep -c '"tick":0,' api-received.txt)" -eq 3 ]
+          [ "$(grep -c '"tick":5,' api-received.txt)" -eq 3 ]
+          grep -q '^meterbench/LC-B1/latest {"deviceId":"LC-B1","tick":5,.*"quantity":"cabinetTemperature","unit":"[^"]*","value":41' api-received.txt
+          grep -q 'MQTT publisher connected' api.log
+
+      - name: API log
+        if: always()
+        run: cat api.log || true
+
       - name: Stop Mosquitto
         if: always()
         run: docker rm -f mosquitto
