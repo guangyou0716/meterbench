@@ -56,6 +56,55 @@ jobs:
       - name: Format, typecheck, unit tests, build
         run: npm run check
 
+  mqtt-smoke:
+    # Publishes one fleet tick to a throwaway local Mosquitto and checks a subscriber received all three devices.
+    needs: build-test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Build tests
+        run: dotnet build tests/Meterbench.Tests -c Release
+
+      - name: Start Mosquitto and a subscriber
+        run: |
+          docker run -d --name mosquitto -p 127.0.0.1:1883:1883 eclipse-mosquitto:2 mosquitto -c /mosquitto-no-auth.conf
+          for i in $(seq 1 30); do
+            docker exec mosquitto mosquitto_sub -h localhost -t '$SYS/broker/version' -C 1 -W 1 >/dev/null 2>&1 && break
+            sleep 1
+          done
+          docker exec mosquitto sh -c "mosquitto_sub -h localhost -t 'meterbench/+/latest' -v -C 3 -W 60 > /tmp/received.txt" &
+          sleep 2
+
+      - name: Publish one tick
+        env:
+          MQTT_SMOKE_BROKER: 127.0.0.1:1883
+        run: dotnet test tests/Meterbench.Tests -c Release --no-build --filter "Category=MqttSmoke"
+
+      - name: Check the subscriber got every device
+        run: |
+          for i in $(seq 1 20); do
+            [ "$(docker exec mosquitto sh -c 'wc -l < /tmp/received.txt')" -ge 3 ] && break
+            sleep 1
+          done
+          docker exec mosquitto cat /tmp/received.txt | tee received.txt
+          grep -q '^meterbench/MTR-A1/latest {"deviceId":"MTR-A1","tick":5' received.txt
+          grep -q '^meterbench/MTR-A2/latest {"deviceId":"MTR-A2","tick":5' received.txt
+          grep -q '^meterbench/LC-B1/latest {"deviceId":"LC-B1","tick":5' received.txt
+          grep -q '"quantity":"cabinetTemperature","unit":"[^"]*","value":41' received.txt
+
+      - name: Stop Mosquitto
+        if: always()
+        run: docker rm -f mosquitto
+
   e2e:
     # Browser check of the dashboard against the real API; screenshots are uploaded as an artifact.
     runs-on: ubuntu-latest
