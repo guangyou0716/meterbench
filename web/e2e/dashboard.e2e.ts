@@ -16,6 +16,9 @@ test('raise an alarm, acknowledge it, and see the dashboard update', async ({ pa
   await page.getByRole('button', { name: 'Reset seed' }).click();
   await expect(page.getByRole('button', { name: 'Reset seed' })).toBeEnabled();
   await expect(page.getByRole('heading', { name: 'Active alarms (0)' })).toBeVisible();
+  // CI runs the API with both adapters at their defaults (off).
+  await expect(page.getByTestId('adapters')).toContainText('Modbus off');
+  await expect(page.getByTestId('adapters')).toContainText('MQTT off');
   const devices = page.getByRole('navigation', { name: 'Devices' }).getByRole('button');
   await expect(devices.first()).toBeVisible();
   // The selected device's subtitle must stay readable on the blue background (I03c).

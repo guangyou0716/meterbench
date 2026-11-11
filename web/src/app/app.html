@@ -2,6 +2,15 @@
   <div>
     <h1>Meterbench</h1>
     <p class="note">Synthetic telemetry. Invented devices and values, not plant data.</p>
+    @if (adapterLabels(); as labels) {
+      <p class="adapters" data-testid="adapters">
+        @for (label of labels; track label.name) {
+          <span class="adapter" [attr.data-tone]="label.tone"
+            ><strong>{{ label.name }}</strong> {{ label.text }}</span
+          >
+        }
+      </p>
+    }
   </div>
   <div class="controls" role="group" aria-label="Simulator controls">
     <button type="button" (click)="tick(1)" [disabled]="busy()">Advance 1 tick</button>
