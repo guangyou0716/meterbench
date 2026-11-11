@@ -20,6 +20,12 @@ public static class MeterbenchHost
             .ValidateOnStart();
         services.AddSingleton<ModbusSimulatorHostedService>();
         services.AddHostedService(sp => sp.GetRequiredService<ModbusSimulatorHostedService>());
+        services.AddOptions<MqttPublisherOptions>()
+            .Bind(configuration.GetSection(MqttPublisherOptions.SectionName))
+            .Validate(o => o.Validate() is null, "Meterbench:Mqtt settings are invalid (loopback IP host, port 1..65535, client id 1..23 letters/digits, topic prefix without wildcards, timings >= 10 ms).")
+            .ValidateOnStart();
+        services.AddSingleton<MqttPublisherHostedService>();
+        services.AddHostedService(sp => sp.GetRequiredService<MqttPublisherHostedService>());
         services.AddScoped<FleetService>();
         services.ConfigureHttpJsonOptions(options =>
         {
