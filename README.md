@@ -106,6 +106,18 @@ Parser tests cover a valid frame, round-trip encode/parse, and each typed error:
 
 CI is [`.github/workflows/ci.yml`](.github/workflows/ci.yml): `ubuntu-latest`, .NET `8.0.x`, restore, `dotnet build -c Release --no-restore`, `dotnet test -c Release --no-build`.
 
+### Browser end-to-end check
+
+[`web/e2e/dashboard.e2e.ts`](web/e2e/dashboard.e2e.ts) runs the dashboard in headless Chromium against the real API. Playwright starts the API on `127.0.0.1:5080` with a throwaway SQLite file under `web/e2e/.data/` and `ng serve` on `127.0.0.1:4200`. The test resets the seed, advances one tick at a time until an alarm is raised, acknowledges it, and checks that the alarm row shows "Acknowledged" and the log shows "active, acknowledged".
+
+```bash
+cd web
+npx playwright install chromium   # once
+npm run e2e
+```
+
+Screenshots are written to `web/e2e/screenshots/` (`01-initial.png`, `02-alarm-raised.png`, `03-alarm-acknowledged.png`). The CI `e2e` job runs the same test after the build and unit-test jobs pass and uploads the screenshots as the `dashboard-screenshots` artifact (kept 14 days).
+
 ## Modbus TCP simulator (library)
 
 `ModbusTcpSimulator` serves the fleet as holding registers over Modbus TCP. It refuses any non-loopback address. Unit ids: `1` = `MTR-A1`, `2` = `MTR-A2`, `3` = `LC-B1`. Each quantity is two registers at its invented holding address (see [`docs/register-map.md`](docs/register-map.md)): the scaled int32, high word first.
