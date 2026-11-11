@@ -30,7 +30,7 @@ Locations are labels for the demo. They are not a site.
 
 ## Electricity meters
 
-Holding addresses are invented placeholders for a later Modbus increment. Nothing serves them in v0.1. Scale is the tutorial-frame exponent: engineering = scaled int32 * 10^scale.
+Holding addresses are invented. The loopback Modbus TCP simulator (`Meterbench.Core.Modbus`, function 0x03 only) serves each quantity as two holding registers starting at that address: the scaled int32, high word first, big-endian. Unit ids: `1` = `MTR-A1`, `2` = `MTR-A2`, `3` = `LC-B1`. Any address not covered by a quantity returns exception `0x02`. Scale is the tutorial-frame exponent: engineering = scaled int32 * 10^scale.
 
 | Code | OBIS-like | Unit | Scale | Holding | Baseline A1 (A2) | Step | Min | Max | Low | High | Hysteresis | Script |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |

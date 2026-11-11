@@ -26,8 +26,8 @@ public static class QuantityCodes
 }
 
 /// <summary>
-/// One invented channel. HoldingAddress is a placeholder for a later Modbus increment
-/// and is not served in increment 1. Scale is the power of ten for the tutorial frame
+/// One invented channel. HoldingAddress is the first of two invented holding registers
+/// (scaled int32, high word first) served by the loopback Modbus TCP simulator. Scale is the power of ten for the tutorial frame
 /// (engineering = scaledInteger * 10^Scale).
 /// </summary>
 public sealed record QuantityDefinition(
