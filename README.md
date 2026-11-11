@@ -33,6 +33,7 @@ Meterbench.Api
   POST /api/alarms/{id}/ack
   POST /api/simulator/tick?count=
   POST /api/seed/reset
+  GET  /api/adapters
         |
         v
 web/ Angular dashboard (ng serve proxies /api)
@@ -81,6 +82,7 @@ Successful bodies are JSON. Errors are `400` or `404` with this body and no othe
 | GET | `/api/devices/{id}/latest` | `200` readings at the newest tick | `404` `DeviceNotFound`, `404` `ReadingNotFound` |
 | GET | `/api/devices/{id}/history?limit=N` | `200` newest ticks first. `limit` is `1..500`, default `100` | `400` `InvalidLimit`, `404` `DeviceNotFound` |
 | GET | `/api/alarms?active=true\|false` | `200` alarms. Omit `active` for all | `400` `InvalidActive` |
+| GET | `/api/adapters` | `200` Modbus simulator (`enabled`, `listening`, `port`) and MQTT publisher (`enabled`, `connected`, `broker`, `topicPrefix`, `publishedTicks`) status. Read-only. `connected` turns false on the next failed publish | |
 | POST | `/api/alarms/{id}/ack` | `200` alarm with `acknowledged: true`. Repeating ack keeps the first timestamp | `400` `InvalidAlarmId`, `404` `AlarmNotFound` |
 | POST | `/api/simulator/tick?count=N` | `200` `{ seed, tick, applied }`. `count` is `1..1000` | `400` `InvalidCount` |
 | POST | `/api/seed/reset` | `200` `{ seed: 20261111, tick: 0, deviceCount: 3 }` | |
