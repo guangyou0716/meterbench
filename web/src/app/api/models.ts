@@ -65,3 +65,22 @@ export interface SeedReset {
 export interface ApiErrorBody {
   error: { code: string; message: string };
 }
+
+export interface ModbusAdapterStatus {
+  enabled: boolean;
+  listening: boolean;
+  port: number | null;
+}
+
+export interface MqttAdapterStatus {
+  enabled: boolean;
+  connected: boolean;
+  broker: string | null;
+  topicPrefix: string | null;
+  publishedTicks: number;
+}
+
+export interface AdapterStatus {
+  modbus: ModbusAdapterStatus;
+  mqtt: MqttAdapterStatus;
+}

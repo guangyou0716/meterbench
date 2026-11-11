@@ -3,7 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { Observable, of, throwError } from 'rxjs';
 import { App } from './app';
 import { MeterbenchApi } from './api/meterbench-api';
-import { Alarm, Device, History, Latest } from './api/models';
+import { AdapterStatus, Alarm, Device, History, Latest } from './api/models';
 
 const devices: Device[] = [
   {
@@ -76,6 +76,18 @@ class FakeApi {
   });
   tick = vi.fn((count: number) => of({ seed: 1, tick: count, applied: count }));
   reset = vi.fn(() => of({ seed: 1, tick: 0, deviceCount: 2 }));
+  adaptersResult: () => Observable<AdapterStatus> = () =>
+    of({
+      modbus: { enabled: false, listening: false, port: null },
+      mqtt: {
+        enabled: false,
+        connected: false,
+        broker: null,
+        topicPrefix: null,
+        publishedTicks: 0,
+      },
+    });
+  adapters = vi.fn(() => this.adaptersResult());
 }
 
 /** The component's async handlers are plain promises, so let them finish before asserting. */
@@ -207,5 +219,48 @@ describe('App', () => {
     const { el } = await render(fake);
 
     expect(el.querySelector('[role="alert"]')?.textContent).toContain('DeviceNotFound');
+  });
+
+  it('shows adapter status chips and refreshes them after a tick', async () => {
+    const fake = new FakeApi();
+    const { fixture, el } = await render(fake);
+    const chips = () =>
+      Array.from(el.querySelectorAll('[data-testid="adapters"] .adapter')).map((c) => [
+        c.textContent?.replace(/\s+/g, ' ').trim(),
+        c.getAttribute('data-tone'),
+      ]);
+    expect(chips()).toEqual([
+      ['Modbus off', 'off'],
+      ['MQTT off', 'off'],
+    ]);
+
+    fake.adaptersResult = () =>
+      of({
+        modbus: { enabled: true, listening: true, port: 5020 },
+        mqtt: {
+          enabled: true,
+          connected: false,
+          broker: '127.0.0.1:1883',
+          topicPrefix: 'meterbench',
+          publishedTicks: 0,
+        },
+      });
+    buttonByText(el, 'Advance 1 tick').click();
+    await settle(fixture);
+    expect(chips()).toEqual([
+      ['Modbus listening on :5020', 'ok'],
+      ['MQTT not connected to 127.0.0.1:1883, 0 ticks published', 'warn'],
+    ]);
+  });
+
+  it('hides adapter status when the API does not provide it, without an error', async () => {
+    const fake = new FakeApi();
+    fake.adaptersResult = () =>
+      throwError(() => new HttpErrorResponse({ status: 404, statusText: 'Not Found' }));
+    const { el } = await render(fake);
+
+    expect(el.querySelector('[data-testid="adapters"]')).toBeNull();
+    expect(el.querySelector('[role="alert"]')).toBeNull();
+    expect(el.textContent).toContain('230.194 V');
   });
 });

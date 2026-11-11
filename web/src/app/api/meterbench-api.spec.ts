@@ -28,12 +28,14 @@ describe('MeterbenchApi', () => {
     api.history('LC-B1', 30).subscribe();
     api.alarms().subscribe();
     api.alarms(true).subscribe();
+    api.adapters().subscribe();
 
     expect(http.expectOne('/api/devices').request.method).toBe('GET');
     http.expectOne('/api/devices/MTR-A1/latest');
     http.expectOne('/api/devices/LC-B1/history?limit=30');
     http.expectOne('/api/alarms');
     http.expectOne('/api/alarms?active=true');
+    expect(http.expectOne('/api/adapters').request.method).toBe('GET');
   });
 
   it('posts tick, reset and acknowledge with no body', () => {

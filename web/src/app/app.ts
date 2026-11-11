@@ -2,9 +2,11 @@ import { HttpErrorResponse } from '@angular/common/http';
 import { Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
 import { MeterbenchApi } from './api/meterbench-api';
-import { Alarm, Device, HistoryPoint, Latest } from './api/models';
+import { AdapterStatus, Alarm, Device, HistoryPoint, Latest } from './api/models';
 import {
+  AdapterLabel,
   Problem,
+  describeAdapters,
   describeAlarm,
   formatAge,
   formatSyntheticTime,
@@ -41,6 +43,8 @@ export class App implements OnInit, OnDestroy {
   protected readonly autoRun = signal(false);
   protected readonly fetchedAt = signal<Date | null>(null);
   protected readonly now = signal(new Date());
+  /** Null until loaded, or when the API does not answer /api/adapters (status is optional). */
+  protected readonly adapterLabels = signal<AdapterLabel[] | null>(null);
 
   protected readonly selectedDevice = computed(
     () => this.devices()?.find((d) => d.id === this.selectedId()) ?? null,
@@ -117,11 +121,13 @@ export class App implements OnInit, OnDestroy {
   async refresh(): Promise<void> {
     const id = this.selectedId();
     try {
-      const [latest, history, alarms] = await Promise.all([
+      const [latest, history, alarms, adapters] = await Promise.all([
         id ? this.loadLatest(id) : Promise.resolve(null),
         id ? firstValueFrom(this.api.history(id, HISTORY_LIMIT)) : Promise.resolve(null),
         firstValueFrom(this.api.alarms()),
+        this.loadAdapters(),
       ]);
+      this.adapterLabels.set(adapters ? describeAdapters(adapters) : null);
       this.latest.set(latest);
       this.history.set(history?.points ?? []);
       this.alarms.set(alarms);
@@ -180,6 +186,15 @@ export class App implements OnInit, OnDestroy {
       }
     } finally {
       this.busy.set(false);
+    }
+  }
+
+  /** Adapter status is informational: a failure here never blocks the dashboard. */
+  private async loadAdapters(): Promise<AdapterStatus | null> {
+    try {
+      return await firstValueFrom(this.api.adapters());
+    } catch {
+      return null;
     }
   }
 

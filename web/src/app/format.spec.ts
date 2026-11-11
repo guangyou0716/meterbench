@@ -1,6 +1,7 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Alarm, HistoryPoint } from './api/models';
 import {
+  describeAdapters,
   describeAlarm,
   formatAge,
   formatSyntheticTime,
@@ -149,5 +150,52 @@ describe('toProblem', () => {
       message: 'HTTP 500 Server Error',
     });
     expect(toProblem(new Error('x')).kind).toBe('unknown');
+  });
+});
+
+describe('describeAdapters', () => {
+  const off = {
+    modbus: { enabled: false, listening: false, port: null },
+    mqtt: { enabled: false, connected: false, broker: null, topicPrefix: null, publishedTicks: 0 },
+  };
+
+  it('labels disabled adapters as off', () => {
+    expect(describeAdapters(off)).toEqual([
+      { name: 'Modbus', text: 'off', tone: 'off' },
+      { name: 'MQTT', text: 'off', tone: 'off' },
+    ]);
+  });
+
+  it('labels a listening Modbus simulator and a connected MQTT publisher as ok', () => {
+    const labels = describeAdapters({
+      modbus: { enabled: true, listening: true, port: 5020 },
+      mqtt: {
+        enabled: true,
+        connected: true,
+        broker: '127.0.0.1:1883',
+        topicPrefix: 'meterbench',
+        publishedTicks: 1,
+      },
+    });
+    expect(labels).toEqual([
+      { name: 'Modbus', text: 'listening on :5020', tone: 'ok' },
+      { name: 'MQTT', text: 'connected to 127.0.0.1:1883, 1 tick published', tone: 'ok' },
+    ]);
+  });
+
+  it('warns when an enabled adapter is not up', () => {
+    const labels = describeAdapters({
+      modbus: { enabled: true, listening: false, port: null },
+      mqtt: {
+        enabled: true,
+        connected: false,
+        broker: '127.0.0.1:1883',
+        topicPrefix: 'meterbench',
+        publishedTicks: 4,
+      },
+    });
+    expect(labels.map((l) => l.tone)).toEqual(['warn', 'warn']);
+    expect(labels[0].text).toBe('not listening');
+    expect(labels[1].text).toBe('not connected to 127.0.0.1:1883, 4 ticks published');
   });
 });

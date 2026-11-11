@@ -1,7 +1,7 @@
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Injectable, InjectionToken, inject } from '@angular/core';
 import { Observable } from 'rxjs';
-import { Alarm, Device, History, Latest, SeedReset, TickResult } from './models';
+import { AdapterStatus, Alarm, Device, History, Latest, SeedReset, TickResult } from './models';
 
 /** Base URL of the API. Empty means same origin (ng serve proxies /api to the .NET API). */
 export const API_BASE_URL = new InjectionToken<string>('API_BASE_URL', {
@@ -45,6 +45,10 @@ export class MeterbenchApi {
   tick(count: number): Observable<TickResult> {
     const params = new HttpParams().set('count', count);
     return this.http.post<TickResult>(`${this.base}/api/simulator/tick`, null, { params });
+  }
+
+  adapters(): Observable<AdapterStatus> {
+    return this.http.get<AdapterStatus>(`${this.base}/api/adapters`);
   }
 
   reset(): Observable<SeedReset> {

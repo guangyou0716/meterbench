@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Alarm, ApiErrorBody, HistoryPoint } from './api/models';
+import { AdapterStatus, Alarm, ApiErrorBody, HistoryPoint } from './api/models';
 
 /** Formats a reading with up to three decimals and its unit, e.g. "230.194 V". */
 export function formatValue(value: number, unit: string): string {
@@ -103,4 +103,29 @@ export function toProblem(error: unknown): Problem {
     return { kind: 'api', message: `HTTP ${error.status} ${error.statusText}`.trim() };
   }
   return { kind: 'unknown', message: 'Unexpected error.' };
+}
+
+export type AdapterTone = 'off' | 'ok' | 'warn';
+
+export interface AdapterLabel {
+  name: string;
+  text: string;
+  tone: AdapterTone;
+}
+
+/** Short labels for the header: one per adapter, with a tone for colour. */
+export function describeAdapters(status: AdapterStatus): AdapterLabel[] {
+  const { modbus, mqtt } = status;
+  const modbusLabel: AdapterLabel = !modbus.enabled
+    ? { name: 'Modbus', text: 'off', tone: 'off' }
+    : modbus.listening
+      ? { name: 'Modbus', text: `listening on :${modbus.port ?? '?'}`, tone: 'ok' }
+      : { name: 'Modbus', text: 'not listening', tone: 'warn' };
+  const ticks = `${mqtt.publishedTicks} tick${mqtt.publishedTicks === 1 ? '' : 's'} published`;
+  const mqttLabel: AdapterLabel = !mqtt.enabled
+    ? { name: 'MQTT', text: 'off', tone: 'off' }
+    : mqtt.connected
+      ? { name: 'MQTT', text: `connected to ${mqtt.broker ?? '?'}, ${ticks}`, tone: 'ok' }
+      : { name: 'MQTT', text: `not connected to ${mqtt.broker ?? '?'}, ${ticks}`, tone: 'warn' };
+  return [modbusLabel, mqttLabel];
 }
