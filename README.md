@@ -152,7 +152,7 @@ await using var publisher = await MqttPublisher.ConnectAsync(
 await FleetMqttMessages.PublishFleetAsync(publisher, FleetCatalog.DefaultSeed, tick: 5);
 ```
 
-A refused CONNACK, a non-CONNACK reply, or no reply within the timeout raises `MqttConnectException`. Unit tests use an in-process fake broker. The CI `mqtt-smoke` job starts a throwaway `eclipse-mosquitto:2`, publishes tick 5, and checks a `mosquitto_sub` subscriber received all three devices. To try it locally:
+A refused CONNACK, a non-CONNACK reply, or no reply within the timeout raises `MqttConnectException`. Unit tests use an in-process fake broker. The CI `mqtt-smoke` job starts a throwaway `eclipse-mosquitto:2`, publishes tick 5, and checks a `mosquitto_sub` subscriber received all three devices. It then starts the API with `Meterbench__Mqtt__Enabled=true`, posts five ticks, and checks the subscriber got tick 0 (on connect) and tick 5 for every device. To try it locally:
 
 ```bash
 docker run --rm -p 127.0.0.1:1883:1883 eclipse-mosquitto:2 mosquitto -c /mosquitto-no-auth.conf
