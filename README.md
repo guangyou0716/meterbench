@@ -6,7 +6,7 @@ This is a simulator. It is not affiliated with LHDN, PayNet, meter vendors, or f
 
 All device ids, locations, register codes, and numbers are invented. See [docs/register-map.md](docs/register-map.md). There is no plant data and no secrets in this tree.
 
-Increment 1 is the backend. An Angular dashboard is a later increment and is not in this repository yet.
+Increment 1 is the backend. Increment 2 adds an Angular dashboard in [web/](web/README.md).
 
 ## Architecture
 
@@ -35,7 +35,7 @@ Meterbench.Api
   POST /api/seed/reset
         |
         v
-(later) Angular dashboard
+web/ Angular dashboard (ng serve proxies /api)
 (later) Modbus TCP and MQTT — interfaces only in v0.1, no listener and no broker
 ```
 

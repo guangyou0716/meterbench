@@ -1,0 +1,182 @@
+<header class="top">
+  <div>
+    <h1>Meterbench</h1>
+    <p class="note">Synthetic telemetry. Invented devices and values, not plant data.</p>
+  </div>
+  <div class="controls" role="group" aria-label="Simulator controls">
+    <button type="button" (click)="tick(1)" [disabled]="busy()">Advance 1 tick</button>
+    <button type="button" (click)="tick(10)" [disabled]="busy()">Advance 10</button>
+    <button type="button" (click)="toggleAuto()" [attr.aria-pressed]="autoRun()">
+      {{ autoRun() ? 'Stop auto-run' : 'Auto-run' }}
+    </button>
+    <button type="button" (click)="reset()" [disabled]="busy()">Reset seed</button>
+    <button type="button" (click)="refresh()">Refresh</button>
+  </div>
+</header>
+
+@if (problem(); as p) {
+  <div class="problem" [class.offline]="p.kind === 'offline'" role="alert">
+    <strong>{{ p.kind === 'offline' ? 'Offline' : 'Error' }}.</strong> {{ p.message }}
+    <button type="button" (click)="loadDevices()">Retry</button>
+  </div>
+}
+
+<section class="alarms" aria-live="polite" aria-labelledby="alarms-title">
+  <h2 id="alarms-title">Active alarms ({{ activeAlarms().length }})</h2>
+  @for (alarm of activeAlarms(); track alarm.id) {
+    <div class="alarm" [class.acked]="alarm.acknowledged" data-testid="active-alarm">
+      <span>{{ describeAlarm(alarm) }}</span>
+      @if (alarm.acknowledged) {
+        <span class="badge">Acknowledged</span>
+      } @else {
+        <button type="button" (click)="acknowledge(alarm)" [disabled]="busy()">Acknowledge</button>
+      }
+    </div>
+  } @empty {
+    <p class="muted">No active alarms.</p>
+  }
+</section>
+
+<main class="layout">
+  <nav aria-label="Devices">
+    <h2>Devices</h2>
+    @if (devices(); as list) {
+      <ul>
+        @for (device of list; track device.id) {
+          <li>
+            <button
+              type="button"
+              class="device"
+              [attr.aria-pressed]="device.id === selectedId()"
+              (click)="select(device)"
+            >
+              <span class="device-id">{{ device.id }}</span>
+              <span class="muted">{{ device.name }} · {{ device.location }}</span>
+            </button>
+          </li>
+        } @empty {
+          <li class="muted">No devices.</li>
+        }
+      </ul>
+    } @else if (!problem()) {
+      <p class="muted">Loading devices…</p>
+    }
+  </nav>
+
+  <section class="detail" aria-labelledby="detail-title">
+    @if (selectedDevice(); as device) {
+      <h2 id="detail-title">
+        {{ device.id }} <span class="muted">{{ device.name }}</span>
+      </h2>
+      @if (latest(); as l) {
+        <p class="muted" data-testid="freshness">
+          Tick {{ l.tick }} · synthetic time {{ formatSyntheticTime(l.recordedAt) }} · fetched
+          {{ age() }}
+        </p>
+        <table>
+          <caption>
+            Latest values
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">Quantity</th>
+              <th scope="col">Value</th>
+              <th scope="col">Register code</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (r of l.readings; track r.quantity) {
+              <tr [class.selected]="r.quantity === selectedQuantity()">
+                <th scope="row">
+                  <button type="button" class="link" (click)="selectQuantity(r.quantity)">
+                    {{ r.quantity }}
+                  </button>
+                </th>
+                <td class="num">{{ formatValue(r.value, r.unit) }}</td>
+                <td class="muted">{{ r.obis }}</td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      } @else {
+        <p class="muted" data-testid="no-readings">No readings yet. Advance the simulator.</p>
+      }
+
+      @if (selectedQuantity(); as q) {
+        <h3>History: {{ q }}</h3>
+        @if (series().length > 1) {
+          <svg
+            class="spark"
+            viewBox="0 0 300 60"
+            preserveAspectRatio="none"
+            role="img"
+            [attr.aria-label]="'Trend of ' + q + ' over the last ' + series().length + ' ticks'"
+          >
+            <polyline
+              [attr.points]="sparkline()"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.5"
+            />
+          </svg>
+        }
+        @if (series().length > 0) {
+          <table class="history">
+            <caption>
+              Last
+              {{
+                series().length
+              }}
+              ticks, newest first
+            </caption>
+            <thead>
+              <tr>
+                <th scope="col">Tick</th>
+                <th scope="col">Value</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (p of series().slice().reverse(); track p.tick) {
+                <tr>
+                  <td>{{ p.tick }}</td>
+                  <td class="num">{{ formatValue(p.value, selectedUnit()) }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        } @else {
+          <p class="muted">No history yet.</p>
+        }
+      }
+    } @else {
+      <p class="muted">Select a device.</p>
+    }
+  </section>
+</main>
+
+<section aria-labelledby="log-title">
+  <h2 id="log-title">Alarm log</h2>
+  @if (recentAlarms().length > 0) {
+    <table>
+      <thead>
+        <tr>
+          <th scope="col">Alarm</th>
+          <th scope="col">State</th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (a of recentAlarms(); track a.id) {
+          <tr>
+            <td>{{ describeAlarm(a) }}</td>
+            <td>
+              {{ a.active ? 'active' : 'cleared at tick ' + a.clearedAtTick
+              }}{{ a.acknowledged ? ', acknowledged' : '' }}
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  } @else {
+    <p class="muted">No alarms yet.</p>
+  }
+</section>
