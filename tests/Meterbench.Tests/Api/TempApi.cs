@@ -14,15 +14,22 @@ namespace Meterbench.Tests.Api;
 public sealed class MeterbenchApiFactory : WebApplicationFactory<Program>
 {
     private readonly string _databasePath;
+    private readonly IReadOnlyDictionary<string, string?> _settings;
 
-    public MeterbenchApiFactory(string databasePath)
+    public MeterbenchApiFactory(string databasePath, IReadOnlyDictionary<string, string?>? settings = null)
     {
         _databasePath = databasePath;
+        _settings = settings ?? new Dictionary<string, string?>();
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
         builder.UseEnvironment("Testing");
+        foreach (var (key, value) in _settings)
+        {
+            builder.UseSetting(key, value);
+        }
+
         builder.ConfigureServices(services =>
         {
             services.RemoveAll<DbContextOptions<MeterbenchDbContext>>();
@@ -40,10 +47,10 @@ public sealed class TempApi : IDisposable
     private readonly string _databasePath;
     private readonly MeterbenchApiFactory _factory;
 
-    public TempApi()
+    public TempApi(IReadOnlyDictionary<string, string?>? settings = null)
     {
         _databasePath = Path.Combine(Path.GetTempPath(), "meterbench-" + Guid.NewGuid().ToString("N") + ".db");
-        _factory = new MeterbenchApiFactory(_databasePath);
+        _factory = new MeterbenchApiFactory(_databasePath, settings);
         Client = _factory.CreateClient();
     }
 

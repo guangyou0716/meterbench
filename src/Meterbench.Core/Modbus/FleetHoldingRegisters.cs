@@ -14,14 +14,22 @@ public sealed class FleetHoldingRegisters : IModbusHoldingRegisterSource
 {
     public const int RegistersPerQuantity = 2;
 
-    private readonly int _seed;
-    private readonly Func<int> _currentTick;
+    private readonly Func<(int Seed, int Tick)> _snapshot;
 
     public FleetHoldingRegisters(int seed, Func<int> currentTick)
     {
         ArgumentNullException.ThrowIfNull(currentTick);
-        _seed = seed;
-        _currentTick = currentTick;
+        _snapshot = () => (seed, currentTick());
+    }
+
+    /// <summary>
+    /// Reads seed and tick together from one snapshot so a reset cannot pair an old seed
+    /// with a new tick inside a single request.
+    /// </summary>
+    public FleetHoldingRegisters(Func<(int Seed, int Tick)> snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        _snapshot = snapshot;
     }
 
     public IReadOnlyList<ushort> ReadHoldingRegisters(string deviceId, ushort startAddress, ushort count)
@@ -62,7 +70,7 @@ public sealed class FleetHoldingRegisters : IModbusHoldingRegisterSource
             return false;
         }
 
-        var tick = _currentTick();
+        var (seed, tick) = _snapshot();
         if (tick < 0)
         {
             error = ModbusExceptionCode.ServerDeviceFailure;
@@ -85,7 +93,7 @@ public sealed class FleetHoldingRegisters : IModbusHoldingRegisterSource
 
             if (!cache.TryGetValue(quantity.Code, out var words))
             {
-                var value = ReadingSimulator.ValueAt(_seed, device.Id, quantity, tick);
+                var value = ReadingSimulator.ValueAt(seed, device.Id, quantity, tick);
                 if (!TryScale(value, quantity.Scale, out var scaled))
                 {
                     error = ModbusExceptionCode.ServerDeviceFailure;

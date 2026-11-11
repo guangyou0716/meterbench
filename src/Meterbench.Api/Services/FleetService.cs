@@ -109,11 +109,26 @@ public sealed class FleetService
 {
     private readonly MeterbenchDbContext _db;
     private readonly SimulatorWriteGate _gate;
+    private readonly SimulatorClock _clock;
 
-    public FleetService(MeterbenchDbContext db, SimulatorWriteGate gate)
+    public FleetService(MeterbenchDbContext db, SimulatorWriteGate gate, SimulatorClock clock)
     {
         _db = db;
         _gate = gate;
+        _clock = clock;
+    }
+
+    /// <summary>Publishes the stored seed and tick to <see cref="SimulatorClock"/> (used at startup).</summary>
+    public async Task SyncClockAsync(CancellationToken cancellationToken = default)
+    {
+        using (await _gate.EnterAsync(cancellationToken))
+        {
+            var state = await _db.SimulatorStates.AsNoTracking().SingleOrDefaultAsync(cancellationToken);
+            if (state is not null)
+            {
+                _clock.Publish(state.Seed, state.Tick);
+            }
+        }
     }
 
     public IReadOnlyList<DeviceDto> ListDevices()
@@ -187,6 +202,7 @@ public sealed class FleetService
         WriteTick(state.Seed, state.Tick, active);
         await _db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        _clock.Publish(state.Seed, state.Tick);
         return new SeedResetDto(state.Seed, state.Tick, FleetCatalog.Devices.Count);
     }
 
@@ -205,6 +221,7 @@ public sealed class FleetService
 
         await _db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
+        _clock.Publish(state.Seed, state.Tick);
         return new TickDto(state.Seed, state.Tick, count);
     }
 
