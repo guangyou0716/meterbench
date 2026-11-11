@@ -37,10 +37,10 @@ Meterbench.Api
         v
 web/ Angular dashboard (ng serve proxies /api)
 Meterbench.Core.Modbus: read-only Modbus TCP simulator (function 0x03, loopback only, library)
-(later) MQTT — interface only, no broker
+Meterbench.Core.Mqtt: MQTT 3.1.1 QoS 0 publisher (library, publish-only, no TLS or auth)
 ```
 
-`Meterbench.Core` holds the fleet catalog, simulator, frame codec, alarm engine, and the Modbus TCP simulator. `Meterbench.Api` is the HTTP and SQLite edge. `Meterbench.Tests` covers the codec, the alarm rules, and the API through `WebApplicationFactory`.
+`Meterbench.Core` holds the fleet catalog, simulator, frame codec, alarm engine, the Modbus TCP simulator, and the MQTT publisher. `Meterbench.Api` is the HTTP and SQLite edge. `Meterbench.Tests` covers the codec, the alarm rules, and the API through `WebApplicationFactory`.
 
 ## Run
 
@@ -139,13 +139,35 @@ Meterbench__Modbus__Enabled=true Meterbench__Modbus__Port=5020 dotnet run --no-l
 
 It binds `127.0.0.1` only and follows the API's last committed tick: `POST /api/simulator/tick` and `POST /api/seed/reset` change what the registers return. A port outside `0..65535` fails startup.
 
+## MQTT publisher (library)
+
+`MqttPublisher` is a small publish-only MQTT 3.1.1 client written for this project: CONNECT with a clean session and no credentials, PUBLISH at QoS 0 without retain, DISCONNECT on dispose. There is no TLS, no auth, no subscribe, and no reconnect, so point it at a local broker. `FleetMqttMessages` builds one message per device for a seed and tick:
+
+- topic `meterbench/{deviceId}/latest` (prefix configurable, wildcards rejected)
+- payload `{"deviceId":"LC-B1","tick":5,"recordedAt":"2026-01-01T00:05:00Z","readings":[{"quantity":"cabinetTemperature","unit":"...","value":41}, ...]}`
+
+```csharp
+await using var publisher = await MqttPublisher.ConnectAsync(
+    new IPEndPoint(IPAddress.Loopback, 1883), "meterbench", TimeSpan.FromSeconds(5));
+await FleetMqttMessages.PublishFleetAsync(publisher, FleetCatalog.DefaultSeed, tick: 5);
+```
+
+A refused CONNACK, a non-CONNACK reply, or no reply within the timeout raises `MqttConnectException`. Unit tests use an in-process fake broker. The CI `mqtt-smoke` job starts a throwaway `eclipse-mosquitto:2`, publishes tick 5, and checks a `mosquitto_sub` subscriber received all three devices. To try it locally:
+
+```bash
+docker run --rm -p 127.0.0.1:1883:1883 eclipse-mosquitto:2 mosquitto -c /mosquitto-no-auth.conf
+MQTT_SMOKE_BROKER=127.0.0.1:1883 dotnet test --filter "Category=MqttSmoke"
+```
+
+The API host does not publish yet; a hosted publisher that follows the simulator tick is the next increment.
+
 ## What this is not
 
 - Not a connection to a real meter, PLC, factory network, or customer site.
 - Not certified DLMS/COSEM, IEC 62056, or legal metrology. The frame codec is an unofficial tutorial layout (start flag, length, payload, CRC-16/X-25, end flag).
 - Not affiliated with LHDN, PayNet, meter vendors, or former employers.
 - Not energy billing, settlement, or safety-critical control. Nothing writes coils or commands a machine.
-- Not a full Modbus server. The simulator answers only function 0x03 (Read Holding Registers), binds loopback only, is opt-in in the API host (`Meterbench:Modbus:Enabled`), and never writes. MQTT is still an interface only.
+- Not a full Modbus server. The simulator answers only function 0x03 (Read Holding Registers), binds loopback only, is opt-in in the API host (`Meterbench:Modbus:Enabled`), and never writes. The MQTT publisher is a library only, QoS 0 and plain TCP; the API host does not start it.
 - Not a SQL Server operations claim. SQLite is the local demo database.
 - Not a place for employer data, register maps from a workplace, or secrets.
 

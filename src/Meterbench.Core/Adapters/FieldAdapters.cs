@@ -11,9 +11,10 @@ public interface IModbusHoldingRegisterSource
 }
 
 /// <summary>
-/// Later increment. Increment 1 has no MQTT client and does not contact a broker.
+/// Implemented by <see cref="Meterbench.Core.Mqtt.MqttPublisher"/>: MQTT 3.1.1 QoS 0 publishes to a
+/// local broker. Payloads are built by <see cref="Meterbench.Core.Mqtt.FleetMqttMessages"/>.
 /// </summary>
 public interface IMqttReadingPublisher
 {
-    void PublishReading(string topic, ReadOnlyMemory<byte> payload);
+    ValueTask PublishAsync(string topic, ReadOnlyMemory<byte> payload, CancellationToken cancellationToken = default);
 }
