@@ -78,6 +78,7 @@ public sealed class MqttPublisherHostedService : BackgroundService
     private readonly SimulatorClock _clock;
     private readonly ILogger<MqttPublisherHostedService> _logger;
     private long _publishedTicks;
+    private int _connected;
 
     public MqttPublisherHostedService(
         IOptions<MqttPublisherOptions> options,
@@ -91,6 +92,12 @@ public sealed class MqttPublisherHostedService : BackgroundService
 
     /// <summary>Number of (seed, tick) snapshots fully published since start.</summary>
     public long PublishedTicks => Interlocked.Read(ref _publishedTicks);
+
+    /// <summary>
+    /// True while a broker session is open (after CONNACK, until a publish fails or the host stops).
+    /// QoS 0 has no acks, so a broker that drops an idle connection is noticed on the next publish.
+    /// </summary>
+    public bool Connected => Volatile.Read(ref _connected) == 1;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -112,6 +119,7 @@ public sealed class MqttPublisherHostedService : BackgroundService
                 await using var publisher = await MqttPublisher.ConnectAsync(
                     broker, options.ClientId, connectTimeout, cancellationToken: stoppingToken).ConfigureAwait(false);
                 _logger.LogInformation("MQTT publisher connected to {Broker}.", broker);
+                Volatile.Write(ref _connected, 1);
 
                 (int Seed, int Tick)? last = null;
                 while (!stoppingToken.IsCancellationRequested)
@@ -135,6 +143,10 @@ public sealed class MqttPublisherHostedService : BackgroundService
             catch (Exception ex) when (ex is MqttConnectException or IOException or System.Net.Sockets.SocketException or FormatException)
             {
                 _logger.LogWarning("MQTT publisher: {Message} Retrying in {Retry} ms.", ex.Message, options.RetryMilliseconds);
+            }
+            finally
+            {
+                Volatile.Write(ref _connected, 0);
             }
 
             try

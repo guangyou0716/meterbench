@@ -61,3 +61,14 @@ public sealed record AlarmDto(
 public sealed record SeedResetDto(int Seed, int Tick, int DeviceCount);
 
 public sealed record TickDto(int Seed, int Tick, int Applied);
+
+public sealed record ModbusAdapterStatusDto(bool Enabled, bool Listening, int? Port);
+
+public sealed record MqttAdapterStatusDto(
+    bool Enabled,
+    bool Connected,
+    string? Broker,
+    string? TopicPrefix,
+    long PublishedTicks);
+
+public sealed record AdapterStatusDto(ModbusAdapterStatusDto Modbus, MqttAdapterStatusDto Mqtt);

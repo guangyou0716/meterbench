@@ -1,7 +1,9 @@
 using System.Globalization;
 using Meterbench.Api.Contracts;
+using Meterbench.Api.Hosting;
 using Meterbench.Api.Services;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 
 namespace Meterbench.Api.Endpoints;
 
@@ -119,6 +121,24 @@ public static class MeterbenchEndpoints
             }
 
             return Results.Ok(await fleet.TickAsync(parsedCount, cancellationToken));
+        });
+
+        app.MapGet("/api/adapters", (
+            ModbusSimulatorHostedService modbus,
+            IOptions<ModbusSimulatorOptions> modbusOptions,
+            MqttPublisherHostedService mqtt,
+            IOptions<MqttPublisherOptions> mqttOptions) =>
+        {
+            var endpoint = modbus.LocalEndpoint;
+            var mqttSettings = mqttOptions.Value;
+            return Results.Ok(new AdapterStatusDto(
+                new ModbusAdapterStatusDto(modbusOptions.Value.Enabled, endpoint is not null, endpoint?.Port),
+                new MqttAdapterStatusDto(
+                    mqttSettings.Enabled,
+                    mqtt.Connected,
+                    mqttSettings.Enabled ? $"{mqttSettings.Host}:{mqttSettings.Port.ToString(CultureInfo.InvariantCulture)}" : null,
+                    mqttSettings.Enabled ? mqttSettings.TopicPrefix : null,
+                    mqtt.PublishedTicks)));
         });
 
         app.MapPost("/api/seed/reset", async (FleetService fleet, CancellationToken cancellationToken) =>
