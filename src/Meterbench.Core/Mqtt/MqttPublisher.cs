@@ -122,7 +122,18 @@ public sealed class MqttPublisher : IMqttReadingPublisher, IAsyncDisposable
         var filled = 0;
         while (true)
         {
-            if (filled > 0 && MqttCodec.TryReadPacket(buffer.AsMemory(0, filled), out var packet, out _))
+            MqttPacket packet;
+            bool complete;
+            try
+            {
+                complete = MqttCodec.TryReadPacket(buffer.AsMemory(0, filled), out packet, out _);
+            }
+            catch (FormatException ex)
+            {
+                throw new MqttConnectException($"Broker sent a malformed reply before CONNACK: {ex.Message}");
+            }
+
+            if (complete)
             {
                 return packet;
             }

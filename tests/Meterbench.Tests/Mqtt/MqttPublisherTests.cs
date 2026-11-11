@@ -81,3 +81,15 @@ public class MqttPublisherTests
         await Assert.ThrowsAsync<ObjectDisposedException>(() => publisher.PublishAsync("t", new byte[1]).AsTask());
     }
 }
+
+public class MqttPublisherMalformedReplyTests
+{
+    [Fact]
+    public async Task UnknownPacketTypeBeforeConnAck_IsAConnectError()
+    {
+        await using var broker = new FakeMqttBroker(rawReply: [0x80, 0x00]);
+        var ex = await Assert.ThrowsAsync<MqttConnectException>(
+            () => MqttPublisher.ConnectAsync(broker.EndPoint, "mb", TimeSpan.FromSeconds(5)));
+        Assert.Contains("malformed", ex.Message, StringComparison.Ordinal);
+    }
+}

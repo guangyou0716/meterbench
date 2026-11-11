@@ -159,7 +159,15 @@ docker run --rm -p 127.0.0.1:1883:1883 eclipse-mosquitto:2 mosquitto -c /mosquit
 MQTT_SMOKE_BROKER=127.0.0.1:1883 dotnet test --filter "Category=MqttSmoke"
 ```
 
-The API host does not publish yet; a hosted publisher that follows the simulator tick is the next increment.
+The API host can publish to a local broker, off by default. It sends the current tick on connect and again after every committed `POST /api/simulator/tick` or `POST /api/seed/reset`, and keeps retrying if the broker is down (the API stays up):
+
+```bash
+cd src/Meterbench.Api
+Meterbench__Mqtt__Enabled=true Meterbench__Mqtt__Port=1883 dotnet run --no-launch-profile
+mosquitto_sub -h 127.0.0.1 -t 'meterbench/+/latest' -v   # in another shell
+```
+
+Settings under `Meterbench:Mqtt`: `Host` (loopback IP only, default `127.0.0.1`), `Port` (`1883`), `ClientId` (`meterbench`), `TopicPrefix` (`meterbench`), `PollMilliseconds` (`250`), `RetryMilliseconds` (`2000`), `ConnectTimeoutMilliseconds` (`5000`). Invalid values fail startup.
 
 ## What this is not
 
@@ -167,7 +175,7 @@ The API host does not publish yet; a hosted publisher that follows the simulator
 - Not certified DLMS/COSEM, IEC 62056, or legal metrology. The frame codec is an unofficial tutorial layout (start flag, length, payload, CRC-16/X-25, end flag).
 - Not affiliated with LHDN, PayNet, meter vendors, or former employers.
 - Not energy billing, settlement, or safety-critical control. Nothing writes coils or commands a machine.
-- Not a full Modbus server. The simulator answers only function 0x03 (Read Holding Registers), binds loopback only, is opt-in in the API host (`Meterbench:Modbus:Enabled`), and never writes. The MQTT publisher is a library only, QoS 0 and plain TCP; the API host does not start it.
+- Not a full Modbus server. The simulator answers only function 0x03 (Read Holding Registers), binds loopback only, is opt-in in the API host (`Meterbench:Modbus:Enabled`), and never writes. The MQTT publisher is QoS 0 over plain TCP to a loopback broker only, opt-in in the API host (`Meterbench:Mqtt:Enabled`).
 - Not a SQL Server operations claim. SQLite is the local demo database.
 - Not a place for employer data, register maps from a workplace, or secrets.
 

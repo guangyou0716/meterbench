@@ -10,14 +10,15 @@ namespace Meterbench.Tests.Mqtt;
 /// </summary>
 internal sealed class FakeMqttBroker : IAsyncDisposable
 {
-    private readonly TcpListener _listener = new(IPAddress.Loopback, 0);
+    private readonly TcpListener _listener;
     private readonly byte? _connAckCode;
     private readonly byte[]? _rawReply;
     private readonly Task _serve;
     private readonly CancellationTokenSource _stop = new();
 
-    public FakeMqttBroker(byte? connAckCode = 0, byte[]? rawReply = null)
+    public FakeMqttBroker(byte? connAckCode = 0, byte[]? rawReply = null, int port = 0)
     {
+        _listener = new TcpListener(IPAddress.Loopback, port);
         _connAckCode = connAckCode;
         _rawReply = rawReply;
         _listener.Start();
@@ -27,6 +28,14 @@ internal sealed class FakeMqttBroker : IAsyncDisposable
     public IPEndPoint EndPoint => (IPEndPoint)_listener.LocalEndpoint;
 
     public List<MqttPacket> Received { get; } = [];
+
+    public MqttPacket[] Snapshot()
+    {
+        lock (Received)
+        {
+            return Received.ToArray();
+        }
+    }
 
     public TaskCompletionSource Finished { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
