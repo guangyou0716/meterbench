@@ -102,6 +102,10 @@ nav ul {
 .device-id {
   font-weight: 600;
 }
+/* Muted grey is unreadable on the selected (blue) background; #dbe7f3 on #0b5394 is about 6:1. */
+.device[aria-pressed='true'] .muted {
+  color: #dbe7f3;
+}
 table {
   border-collapse: collapse;
   width: 100%;
