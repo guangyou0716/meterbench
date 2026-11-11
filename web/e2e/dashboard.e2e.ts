@@ -18,6 +18,10 @@ test('raise an alarm, acknowledge it, and see the dashboard update', async ({ pa
   await expect(page.getByRole('heading', { name: 'Active alarms (0)' })).toBeVisible();
   const devices = page.getByRole('navigation', { name: 'Devices' }).getByRole('button');
   await expect(devices.first()).toBeVisible();
+  // The selected device's subtitle must stay readable on the blue background (I03c).
+  const selected = page.locator(".device[aria-pressed='true']");
+  await expect(selected).toHaveCount(1);
+  await expect(selected.locator('.muted')).toHaveCSS('color', 'rgb(219, 231, 243)');
 
   const advance = page.getByRole('button', { name: 'Advance 1 tick' });
   await advance.click();
