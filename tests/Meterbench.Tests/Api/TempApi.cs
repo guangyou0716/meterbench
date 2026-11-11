@@ -49,6 +49,8 @@ public sealed class TempApi : IDisposable
 
     public HttpClient Client { get; }
 
+    public IServiceProvider Services => _factory.Services;
+
     public void Dispose()
     {
         Client.Dispose();

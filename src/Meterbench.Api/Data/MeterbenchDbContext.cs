@@ -25,7 +25,8 @@ public sealed class MeterbenchDbContext : DbContext
             entity.Property(row => row.Quantity).HasMaxLength(64).IsRequired();
             entity.Property(row => row.Unit).HasMaxLength(16).IsRequired();
             entity.Property(row => row.Obis).HasMaxLength(32).IsRequired();
-            entity.HasIndex(row => new { row.DeviceId, row.Tick });
+            // One reading per device, tick, and quantity. The (DeviceId, Tick) prefix also serves latest/history.
+            entity.HasIndex(row => new { row.DeviceId, row.Tick, row.Quantity }).IsUnique();
         });
 
         modelBuilder.Entity<AlarmRow>(entity =>

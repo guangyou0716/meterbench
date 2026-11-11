@@ -70,13 +70,50 @@ public abstract record AckLookup
     }
 }
 
+/// <summary>
+/// One per process. Serializes simulator writes (seed, reset, tick) so two overlapping
+/// requests cannot read the same tick and insert duplicate rows.
+/// </summary>
+public sealed class SimulatorWriteGate : IDisposable
+{
+    private readonly SemaphoreSlim _semaphore = new(1, 1);
+
+    public async Task<IDisposable> EnterAsync(CancellationToken cancellationToken)
+    {
+        await _semaphore.WaitAsync(cancellationToken);
+        return new Releaser(_semaphore);
+    }
+
+    public void Dispose()
+    {
+        _semaphore.Dispose();
+    }
+
+    private sealed class Releaser : IDisposable
+    {
+        private SemaphoreSlim? _semaphore;
+
+        public Releaser(SemaphoreSlim semaphore)
+        {
+            _semaphore = semaphore;
+        }
+
+        public void Dispose()
+        {
+            Interlocked.Exchange(ref _semaphore, null)?.Release();
+        }
+    }
+}
+
 public sealed class FleetService
 {
     private readonly MeterbenchDbContext _db;
+    private readonly SimulatorWriteGate _gate;
 
-    public FleetService(MeterbenchDbContext db)
+    public FleetService(MeterbenchDbContext db, SimulatorWriteGate gate)
     {
         _db = db;
+        _gate = gate;
     }
 
     public IReadOnlyList<DeviceDto> ListDevices()
@@ -98,10 +135,31 @@ public sealed class FleetService
             return;
         }
 
-        await ResetAsync(cancellationToken);
+        using (await _gate.EnterAsync(cancellationToken))
+        {
+            await EnsureSeededLockedAsync(cancellationToken);
+        }
     }
 
     public async Task<SeedResetDto> ResetAsync(CancellationToken cancellationToken = default)
+    {
+        using (await _gate.EnterAsync(cancellationToken))
+        {
+            return await ResetLockedAsync(cancellationToken);
+        }
+    }
+
+    private async Task EnsureSeededLockedAsync(CancellationToken cancellationToken)
+    {
+        if (await _db.SimulatorStates.AnyAsync(cancellationToken))
+        {
+            return;
+        }
+
+        await ResetLockedAsync(cancellationToken);
+    }
+
+    private async Task<SeedResetDto> ResetLockedAsync(CancellationToken cancellationToken)
     {
         await using var transaction = await _db.Database.BeginTransactionAsync(cancellationToken);
         await _db.Alarms.ExecuteDeleteAsync(cancellationToken);
@@ -134,7 +192,8 @@ public sealed class FleetService
 
     public async Task<TickDto> TickAsync(int count, CancellationToken cancellationToken = default)
     {
-        await EnsureSeededAsync(cancellationToken);
+        using var entered = await _gate.EnterAsync(cancellationToken);
+        await EnsureSeededLockedAsync(cancellationToken);
         await using var transaction = await _db.Database.BeginTransactionAsync(cancellationToken);
         var state = await _db.SimulatorStates.SingleAsync(cancellationToken);
         var active = await LoadActiveAsync(cancellationToken);
@@ -170,6 +229,13 @@ public sealed class FleetService
         var rows = await _db.Readings
             .Where(row => row.DeviceId == deviceId && row.Tick == tick.Value)
             .ToListAsync(cancellationToken);
+        if (rows.Count == 0)
+        {
+            // A reset removed this tick between the two queries. Report it like an empty device
+            // instead of failing with an index error.
+            return LatestLookup.MissingReading.Instance;
+        }
+
         var recordedAt = rows[0].RecordedAt;
         return new LatestLookup.Ok(new LatestDto(deviceId, tick.Value, recordedAt, OrderReadings(device, rows)));
     }
@@ -201,13 +267,17 @@ public sealed class FleetService
         var rows = await _db.Readings
             .Where(row => row.DeviceId == deviceId && ticks.Contains(row.Tick))
             .ToListAsync(cancellationToken);
-        var points = ticks
-            .Select(tick =>
+        // A reset between the two queries can leave a tick with no rows; skip it instead of failing.
+        var points = new List<HistoryPointDto>(ticks.Count);
+        foreach (var tick in ticks)
+        {
+            var atTick = rows.Where(row => row.Tick == tick).ToList();
+            if (atTick.Count > 0)
             {
-                var atTick = rows.Where(row => row.Tick == tick).ToList();
-                return new HistoryPointDto(tick, atTick[0].RecordedAt, OrderReadings(device, atTick));
-            })
-            .ToList();
+                points.Add(new HistoryPointDto(tick, atTick[0].RecordedAt, OrderReadings(device, atTick)));
+            }
+        }
+
         return new HistoryLookup.Ok(new HistoryDto(deviceId, limit, points));
     }
 
