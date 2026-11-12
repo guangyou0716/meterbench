@@ -6,18 +6,21 @@ namespace Meterbench.Tests.Mqtt;
 
 /// <summary>
 /// In-test single-connection broker on loopback: answers CONNECT with a chosen CONNACK (or never),
-/// then records packets until DISCONNECT or the socket closes.
+/// answers PINGREQ with PINGRESP (configurable), then records packets until DISCONNECT or the socket closes.
 /// </summary>
 internal sealed class FakeMqttBroker : IAsyncDisposable
 {
     private readonly TcpListener _listener;
     private readonly byte? _connAckCode;
     private readonly byte[]? _rawReply;
+    private readonly byte[]? _pingReply;
     private readonly Task _serve;
     private readonly CancellationTokenSource _stop = new();
 
-    public FakeMqttBroker(byte? connAckCode = 0, byte[]? rawReply = null, int port = 0)
+    /// <param name="pingReply">Bytes sent back for each PINGREQ; default PINGRESP, null for no answer.</param>
+    public FakeMqttBroker(byte? connAckCode = 0, byte[]? rawReply = null, int port = 0, byte[]? pingReply = null, bool answerPings = true)
     {
+        _pingReply = answerPings ? pingReply ?? [0xD0, 0x00] : null;
         _listener = new TcpListener(IPAddress.Loopback, port);
         _connAckCode = connAckCode;
         _rawReply = rawReply;
@@ -84,6 +87,13 @@ internal sealed class FakeMqttBroker : IAsyncDisposable
                         else if (_connAckCode is { } code)
                         {
                             await stream.WriteAsync(new byte[] { 0x20, 0x02, 0x00, code }, _stop.Token).ConfigureAwait(false);
+                        }
+                    }
+                    else if (copy.Type == MqttPacketType.PingReq)
+                    {
+                        if (_pingReply is not null)
+                        {
+                            await stream.WriteAsync(_pingReply, _stop.Token).ConfigureAwait(false);
                         }
                     }
                     else if (copy.Type == MqttPacketType.Disconnect)

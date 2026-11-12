@@ -30,6 +30,12 @@ public sealed class MqttPublisherOptions
 
     public int ConnectTimeoutMilliseconds { get; set; } = 5000;
 
+    /// <summary>
+    /// MQTT keep alive sent in CONNECT (0..65535 s, 0 = off). When nothing was sent for half of it, the
+    /// publisher pings the broker, so an idle simulator keeps its session and a dead broker is noticed.
+    /// </summary>
+    public int KeepAliveSeconds { get; set; } = 60;
+
     /// <summary>Returns null when valid, otherwise the first problem.</summary>
     public string? Validate()
     {
@@ -53,6 +59,11 @@ public sealed class MqttPublisherOptions
             return "Meterbench:Mqtt poll, retry and connect timeout must be at least 10 ms.";
         }
 
+        if (KeepAliveSeconds is < 0 or > ushort.MaxValue)
+        {
+            return "Meterbench:Mqtt:KeepAliveSeconds must be 0..65535.";
+        }
+
         try
         {
             MqttCodec.ValidateClientId(ClientId);
@@ -69,8 +80,8 @@ public sealed class MqttPublisherOptions
 
 /// <summary>
 /// When <c>Meterbench:Mqtt:Enabled</c> is true, publishes one QoS 0 message per device to a loopback
-/// broker on connect and after every committed tick or reset. Reconnects after failures; a missing
-/// broker never stops the API.
+/// broker on connect and after every committed tick or reset. Sends PINGREQ when idle for half the
+/// keep alive. Reconnects after failures; a missing broker never stops the API.
 /// </summary>
 public sealed class MqttPublisherHostedService : BackgroundService
 {
@@ -79,6 +90,7 @@ public sealed class MqttPublisherHostedService : BackgroundService
     private readonly ILogger<MqttPublisherHostedService> _logger;
     private long _publishedTicks;
     private int _connected;
+    private long _pings;
 
     public MqttPublisherHostedService(
         IOptions<MqttPublisherOptions> options,
@@ -94,10 +106,13 @@ public sealed class MqttPublisherHostedService : BackgroundService
     public long PublishedTicks => Interlocked.Read(ref _publishedTicks);
 
     /// <summary>
-    /// True while a broker session is open (after CONNACK, until a publish fails or the host stops).
-    /// QoS 0 has no acks, so a broker that drops an idle connection is noticed on the next publish.
+    /// True while a broker session is open (after CONNACK, until a publish or ping fails or the host stops).
+    /// QoS 0 has no acks; a broker that goes away is noticed by the next keep alive ping or publish.
     /// </summary>
     public bool Connected => Volatile.Read(ref _connected) == 1;
+
+    /// <summary>Number of keep alive pings the broker answered since start.</summary>
+    public long Pings => Interlocked.Read(ref _pings);
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -111,17 +126,20 @@ public sealed class MqttPublisherHostedService : BackgroundService
         var poll = TimeSpan.FromMilliseconds(options.PollMilliseconds);
         var retry = TimeSpan.FromMilliseconds(options.RetryMilliseconds);
         var connectTimeout = TimeSpan.FromMilliseconds(options.ConnectTimeoutMilliseconds);
+        var keepAlive = (ushort)options.KeepAliveSeconds;
+        TimeSpan? pingAfter = keepAlive == 0 ? null : TimeSpan.FromSeconds(keepAlive / 2.0);
 
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
                 await using var publisher = await MqttPublisher.ConnectAsync(
-                    broker, options.ClientId, connectTimeout, cancellationToken: stoppingToken).ConfigureAwait(false);
+                    broker, options.ClientId, connectTimeout, keepAlive, stoppingToken).ConfigureAwait(false);
                 _logger.LogInformation("MQTT publisher connected to {Broker}.", broker);
                 Volatile.Write(ref _connected, 1);
 
                 (int Seed, int Tick)? last = null;
+                var lastSent = System.Diagnostics.Stopwatch.StartNew();
                 while (!stoppingToken.IsCancellationRequested)
                 {
                     var current = _clock.Current;
@@ -131,6 +149,13 @@ public sealed class MqttPublisherHostedService : BackgroundService
                             publisher, current.Seed, current.Tick, options.TopicPrefix, stoppingToken).ConfigureAwait(false);
                         last = current;
                         Interlocked.Increment(ref _publishedTicks);
+                        lastSent.Restart();
+                    }
+                    else if (pingAfter is { } idle && lastSent.Elapsed >= idle)
+                    {
+                        await publisher.PingAsync(connectTimeout, stoppingToken).ConfigureAwait(false);
+                        Interlocked.Increment(ref _pings);
+                        lastSent.Restart();
                     }
 
                     await Task.Delay(poll, stoppingToken).ConfigureAwait(false);

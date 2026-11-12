@@ -5,7 +5,7 @@ using Meterbench.Core.Mqtt;
 namespace Meterbench.Tests.Mqtt;
 
 /// <summary>
-/// Publishes one fleet tick to a real broker. Runs only when MQTT_SMOKE_BROKER is set to "ip:port"
+/// Publishes one fleet tick to a real broker and checks it answers a keep alive PINGREQ. Runs only when MQTT_SMOKE_BROKER is set to "ip:port"
 /// (CI starts a throwaway Mosquitto for it); otherwise it returns immediately.
 /// </summary>
 public class MqttBrokerSmokeTests
@@ -23,5 +23,6 @@ public class MqttBrokerSmokeTests
         var broker = IPEndPoint.Parse(target);
         await using var publisher = await MqttPublisher.ConnectAsync(broker, "meterbenchsmoke", TimeSpan.FromSeconds(10));
         await FleetMqttMessages.PublishFleetAsync(publisher, FleetCatalog.DefaultSeed, 5);
+        await publisher.PingAsync(TimeSpan.FromSeconds(10));
     }
 }
