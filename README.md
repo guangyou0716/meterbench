@@ -169,7 +169,7 @@ Meterbench__Mqtt__Enabled=true Meterbench__Mqtt__Port=1883 dotnet run --no-launc
 mosquitto_sub -h 127.0.0.1 -t 'meterbench/+/latest' -v   # in another shell
 ```
 
-Settings under `Meterbench:Mqtt`: `Host` (loopback IP only, default `127.0.0.1`), `Port` (`1883`), `ClientId` (`meterbench`), `TopicPrefix` (`meterbench`), `PollMilliseconds` (`250`), `RetryMilliseconds` (`2000`), `ConnectTimeoutMilliseconds` (`5000`). Invalid values fail startup.
+Settings under `Meterbench:Mqtt`: `Host` (loopback IP only, default `127.0.0.1`), `Port` (`1883`), `ClientId` (`meterbench`), `TopicPrefix` (`meterbench`), `PollMilliseconds` (`250`), `RetryMilliseconds` (`2000`), `ConnectTimeoutMilliseconds` (`5000`), `KeepAliveSeconds` (`60`, `0` turns it off; after half of it with nothing sent the publisher sends PINGREQ and reconnects if no PINGRESP arrives within the connect timeout). Invalid values fail startup.
 
 ## What this is not
 

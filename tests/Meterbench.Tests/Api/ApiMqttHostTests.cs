@@ -68,7 +68,63 @@ public class ApiMqttHostTests
         Assert.Equal(3, published.Length);
     }
 
+    [Fact]
+    public async Task Idle_SendsKeepAlivePingsAndStaysConnected()
+    {
+        await using var broker = new FakeMqttBroker();
+        var settings = Enabled(broker.EndPoint.Port);
+        settings["Meterbench:Mqtt:KeepAliveSeconds"] = "1";
+        using var api = new TempApi(settings);
+        var service = api.Services.GetRequiredService<MqttPublisherHostedService>();
+
+        await WaitForPublishesAsync(broker, 3);
+        await WaitUntilAsync(() => broker.Snapshot().Count(p => p.Type == MqttPacketType.PingReq) >= 2 && service.Pings >= 2, "two answered pings");
+
+        var connect = broker.Snapshot().First(p => p.Type == MqttPacketType.Connect);
+        Assert.Equal(new byte[] { 0x00, 0x01 }, connect.Body.Slice(8, 2).ToArray());
+        Assert.True(service.Connected);
+        Assert.Equal(1, broker.Snapshot().Count(p => p.Type == MqttPacketType.Connect));
+    }
+
+    [Fact]
+    public async Task KeepAliveZero_SendsNoPings()
+    {
+        await using var broker = new FakeMqttBroker();
+        var settings = Enabled(broker.EndPoint.Port);
+        settings["Meterbench:Mqtt:KeepAliveSeconds"] = "0";
+        using var api = new TempApi(settings);
+
+        await WaitForPublishesAsync(broker, 3);
+        await Task.Delay(800);
+        Assert.DoesNotContain(broker.Snapshot(), p => p.Type == MqttPacketType.PingReq);
+        var connect = broker.Snapshot().First(p => p.Type == MqttPacketType.Connect);
+        Assert.Equal(new byte[] { 0x00, 0x00 }, connect.Body.Slice(8, 2).ToArray());
+    }
+
+    [Fact]
+    public async Task UnansweredPing_DropsTheSession()
+    {
+        await using var broker = new FakeMqttBroker(answerPings: false);
+        var settings = Enabled(broker.EndPoint.Port);
+        settings["Meterbench:Mqtt:KeepAliveSeconds"] = "1";
+        settings["Meterbench:Mqtt:ConnectTimeoutMilliseconds"] = "200";
+        settings["Meterbench:Mqtt:RetryMilliseconds"] = "5000";
+        using var api = new TempApi(settings);
+        var service = api.Services.GetRequiredService<MqttPublisherHostedService>();
+
+        await WaitForPublishesAsync(broker, 3);
+        await broker.Finished.Task.WaitAsync(Timeout);
+        await WaitUntilAsync(() => !service.Connected, "session marked disconnected");
+
+        var types = broker.Snapshot().Select(p => p.Type).ToArray();
+        Assert.Equal(MqttPacketType.PingReq, types[^2]);
+        Assert.Equal(MqttPacketType.Disconnect, types[^1]);
+        Assert.Equal(0, service.Pings);
+    }
+
     [Theory]
+    [InlineData("Meterbench:Mqtt:KeepAliveSeconds", "-1")]
+    [InlineData("Meterbench:Mqtt:KeepAliveSeconds", "65536")]
     [InlineData("Meterbench:Mqtt:Host", "10.0.0.5")]
     [InlineData("Meterbench:Mqtt:Host", "broker.example.com")]
     [InlineData("Meterbench:Mqtt:Port", "0")]
@@ -92,6 +148,16 @@ public class ApiMqttHostTests
     {
         using var doc = JsonDocument.Parse(MqttCodec.ReadPublish(publish).Payload);
         return doc.RootElement.GetProperty("tick").GetInt32();
+    }
+
+    private static async Task WaitUntilAsync(Func<bool> condition, string what)
+    {
+        var deadline = DateTime.UtcNow + Timeout;
+        while (!condition())
+        {
+            Assert.True(DateTime.UtcNow < deadline, $"Timed out waiting for {what}.");
+            await Task.Delay(20);
+        }
     }
 
     private static async Task<MqttPacket[]> WaitForPublishesAsync(FakeMqttBroker broker, int count)

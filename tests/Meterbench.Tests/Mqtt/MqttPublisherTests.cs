@@ -82,6 +82,89 @@ public class MqttPublisherTests
     }
 }
 
+public class MqttPublisherPingTests
+{
+    private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(5);
+
+    [Fact]
+    public async Task Ping_IsAnsweredWithPingResp()
+    {
+        await using var broker = new FakeMqttBroker();
+        await using (var publisher = await MqttPublisher.ConnectAsync(broker.EndPoint, "mb", Timeout))
+        {
+            await publisher.PingAsync(Timeout);
+            await publisher.PingAsync(Timeout);
+        }
+
+        await broker.Finished.Task.WaitAsync(Timeout);
+        Assert.Equal(
+            [MqttPacketType.Connect, MqttPacketType.PingReq, MqttPacketType.PingReq, MqttPacketType.Disconnect],
+            broker.Snapshot().Select(p => p.Type));
+    }
+
+    [Fact]
+    public async Task Ping_Unanswered_TimesOutAsIOException()
+    {
+        await using var broker = new FakeMqttBroker(answerPings: false);
+        await using var publisher = await MqttPublisher.ConnectAsync(broker.EndPoint, "mb", Timeout);
+        var ex = await Assert.ThrowsAsync<IOException>(() => publisher.PingAsync(TimeSpan.FromMilliseconds(200)));
+        Assert.Contains("No PINGRESP", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Ping_AnsweredWithOtherPacket_IsIOException()
+    {
+        await using var broker = new FakeMqttBroker(pingReply: [0x20, 0x02, 0x00, 0x00]);
+        await using var publisher = await MqttPublisher.ConnectAsync(broker.EndPoint, "mb", Timeout);
+        var ex = await Assert.ThrowsAsync<IOException>(() => publisher.PingAsync(Timeout));
+        Assert.Contains("instead of PINGRESP", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Ping_MalformedReply_IsIOException()
+    {
+        await using var broker = new FakeMqttBroker(pingReply: [0x80, 0x00]);
+        await using var publisher = await MqttPublisher.ConnectAsync(broker.EndPoint, "mb", Timeout);
+        var ex = await Assert.ThrowsAsync<IOException>(() => publisher.PingAsync(Timeout));
+        Assert.Contains("malformed reply before PINGRESP", ex.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Ping_BrokerClosedConnection_IsIOException()
+    {
+        var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        try
+        {
+            var serve = Task.Run(async () =>
+            {
+                using var client = await listener.AcceptTcpClientAsync();
+                var stream = client.GetStream();
+                var buffer = new byte[256];
+                _ = await stream.ReadAsync(buffer);
+                await stream.WriteAsync(new byte[] { 0x20, 0x02, 0x00, 0x00 });
+            });
+
+            await using var publisher = await MqttPublisher.ConnectAsync((IPEndPoint)listener.LocalEndpoint, "mb", Timeout);
+            await serve.WaitAsync(Timeout);
+            await Assert.ThrowsAnyAsync<IOException>(() => publisher.PingAsync(Timeout));
+        }
+        finally
+        {
+            listener.Stop();
+        }
+    }
+
+    [Fact]
+    public async Task PingAfterDispose_Throws()
+    {
+        await using var broker = new FakeMqttBroker();
+        var publisher = await MqttPublisher.ConnectAsync(broker.EndPoint, "mb", Timeout);
+        await publisher.DisposeAsync();
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => publisher.PingAsync(Timeout));
+    }
+}
+
 public class MqttPublisherMalformedReplyTests
 {
     [Fact]

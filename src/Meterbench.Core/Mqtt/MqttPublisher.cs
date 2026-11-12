@@ -19,6 +19,7 @@ public sealed class MqttConnectException : Exception
 
 /// <summary>
 /// Publish-only MQTT 3.1.1 client over plain TCP: QoS 0, clean session, no credentials, no TLS.
+/// The caller keeps the session alive with <see cref="PingAsync"/> when it has nothing to publish.
 /// Meant for a local broker on loopback. Publishes are fire-and-forget, as QoS 0 is.
 /// Not thread-safe: one caller at a time.
 /// </summary>
@@ -55,7 +56,7 @@ public sealed class MqttPublisher : IMqttReadingPublisher, IAsyncDisposable
             await client.ConnectAsync(broker, deadline.Token).ConfigureAwait(false);
             var stream = client.GetStream();
             await stream.WriteAsync(MqttCodec.EncodeConnect(clientId, keepAliveSeconds), deadline.Token).ConfigureAwait(false);
-            var connAck = await ReadOnePacketAsync(stream, deadline.Token).ConfigureAwait(false);
+            var connAck = await ReadOnePacketAsync(stream, "CONNACK", deadline.Token).ConfigureAwait(false);
             byte code;
             try
             {
@@ -92,6 +93,36 @@ public sealed class MqttPublisher : IMqttReadingPublisher, IAsyncDisposable
         await _stream.WriteAsync(frame, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Sends PINGREQ and waits for PINGRESP within <paramref name="timeout"/>. This client never subscribes
+    /// and only publishes at QoS 0, so the broker sends it nothing else and the next packet must be PINGRESP.
+    /// Throws <see cref="IOException"/> when the broker closed the connection, answered with something else,
+    /// or did not answer in time. After a failure the publisher should be disposed.
+    /// </summary>
+    public async Task PingAsync(TimeSpan timeout, CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        deadline.CancelAfter(timeout);
+        try
+        {
+            await _stream.WriteAsync(MqttCodec.EncodePingReq(), deadline.Token).ConfigureAwait(false);
+            var reply = await ReadOnePacketAsync(_stream, "PINGRESP", deadline.Token).ConfigureAwait(false);
+            if (reply.Type != MqttPacketType.PingResp || reply.Flags != 0 || reply.Body.Length != 0)
+            {
+                throw new IOException($"Broker answered PINGREQ with {reply.Type} instead of PINGRESP.");
+            }
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new IOException($"No PINGRESP within {timeout.TotalMilliseconds:0} ms.");
+        }
+        catch (MqttConnectException ex)
+        {
+            throw new IOException(ex.Message, ex);
+        }
+    }
+
     /// <summary>Sends DISCONNECT (best effort) and closes the socket.</summary>
     public async ValueTask DisposeAsync()
     {
@@ -116,7 +147,7 @@ public sealed class MqttPublisher : IMqttReadingPublisher, IAsyncDisposable
         }
     }
 
-    private static async Task<MqttPacket> ReadOnePacketAsync(NetworkStream stream, CancellationToken cancellationToken)
+    private static async Task<MqttPacket> ReadOnePacketAsync(NetworkStream stream, string expected, CancellationToken cancellationToken)
     {
         var buffer = new byte[256];
         var filled = 0;
@@ -130,7 +161,7 @@ public sealed class MqttPublisher : IMqttReadingPublisher, IAsyncDisposable
             }
             catch (FormatException ex)
             {
-                throw new MqttConnectException($"Broker sent a malformed reply before CONNACK: {ex.Message}");
+                throw new MqttConnectException($"Broker sent a malformed reply before {expected}: {ex.Message}");
             }
 
             if (complete)
@@ -140,13 +171,13 @@ public sealed class MqttPublisher : IMqttReadingPublisher, IAsyncDisposable
 
             if (filled == buffer.Length)
             {
-                throw new MqttConnectException("Broker sent an oversized reply before CONNACK.");
+                throw new MqttConnectException($"Broker sent an oversized reply before {expected}.");
             }
 
             var read = await stream.ReadAsync(buffer.AsMemory(filled), cancellationToken).ConfigureAwait(false);
             if (read == 0)
             {
-                throw new MqttConnectException("Broker closed the connection before CONNACK.");
+                throw new MqttConnectException($"Broker closed the connection before {expected}.");
             }
 
             filled += read;
